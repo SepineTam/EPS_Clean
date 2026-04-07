@@ -1,0 +1,69 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            asset_name: eps_darwin_arm64
+            binary_name: eps
+          - goos: darwin
+            goarch: amd64
+            asset_name: eps_darwin_amd64
+            binary_name: eps
+          - goos: linux
+            goarch: amd64
+            asset_name: eps_linux_amd64
+            binary_name: eps
+          - goos: windows
+            goarch: amd64
+            asset_name: eps_windows_amd64
+            binary_name: eps.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o "dist/${{ matrix.binary_name }}" ./cmd/eps
+
+      - name: Package archive
+        run: |
+          mkdir -p release
+          cd dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "../release/${{ matrix.asset_name }}.zip" "${{ matrix.binary_name }}"
+          else
+            tar -czf "../release/${{ matrix.asset_name }}.tar.gz" "${{ matrix.binary_name }}"
+          fi
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
